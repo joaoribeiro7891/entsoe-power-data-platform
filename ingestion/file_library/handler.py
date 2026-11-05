@@ -7,6 +7,9 @@ TIMEOUT_SECONDS = 30
 LIST_URL = "https://fms.tp.entsoe.eu/listFileMetadata"
 TOP_LEVEL_FOLDER = "TP_export"
 MAX_IDS_PER_DOWNLOAD = 100  # File Library API limit (https://transparencyplatform.zendesk.com/hc/en-us/articles/35960137882129-File-Library-Guide)
+DOWNLOAD_URL = "https://fms.tp.entsoe.eu/downloadFileContent"
+
+
 
 def get_token(username: str, password: str) -> str:
   
@@ -32,6 +35,8 @@ def get_token(username: str, password: str) -> str:
   response.raise_for_status()
 
   return response.json()["access_token"]
+
+
 
 
 def list_files(token: str, folder: str, updated_since: str | None = None) -> list[dict]:
@@ -66,10 +71,44 @@ def list_files(token: str, folder: str, updated_since: str | None = None) -> lis
     headers={"Authorization": f"Bearer {token}"},
     timeout=TIMEOUT_SECONDS
   )
-
   response.raise_for_status()
 
   return response.json()["itemList"]
+
+
+
+def download_file(token: str, file_id: str) -> bytes:
+  """
+  Downloads a file from the ENTSO-E File Library.
+
+  Args:
+    token: The OAuth access token from get_token().
+    file_id: The file ID from list_files().
+  
+  Returns:
+    The file content as bytes.
+  
+  Raises:
+    requests.HTTPError: If File Library API rejects the request
+  """
+  
+  body = {
+    "topLevelFolder": TOP_LEVEL_FOLDER,
+    "fileIdList": [file_id],
+    "downloadAsZip": False
+  }
+
+
+  response = requests.post(
+    DOWNLOAD_URL,
+    json=body,
+    headers={"Authorization": f"Bearer {token}"},
+    timeout=TIMEOUT_SECONDS
+  )
+  response.raise_for_status()
+
+  return response.content
+
 
 
 
@@ -88,3 +127,12 @@ if __name__ == "__main__":
     print(f"""Path: {f["typeSpecificAttributeMap"]["path"]},
       File: {f["content"]["filename"]}, 
       Last Updated: {f["lastUpdatedTimestamp"]}""")
+    
+  # Downloading the newest file
+  newest = files[0]
+  content = download_file(token, newest["fileId"])
+  filename = newest["content"]["filename"]
+  
+  with open(filename, "wb") as out:
+    out.write(content)
+  print(f"Downloaded {filename} ({len(content)} bytes)")
