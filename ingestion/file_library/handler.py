@@ -46,7 +46,7 @@ def list_files(token: str, folder: str, updated_since: str | None = None) -> lis
   Args:
     token: The OAuth access token from get_token().
     folder: The dataset folder, e.g. "ActualTotalLoad_6.1.A_r3".
-    updated_since: Only return files updated since this timestamp.
+    updated_since: For incremental loading: Only return files updated since the last successful run (watermark).
 
   Returns:
     The items from the response's itemList.
