@@ -1,4 +1,5 @@
 import requests, dotenv, os
+from datetime import datetime, timezone
 
 TOKEN_URL = "https://keycloak.tp.entsoe.eu/realms/tp/protocol/openid-connect/token"
 CLIENT_ID = "tp-fms-public"
@@ -33,20 +34,20 @@ def get_token(username: str, password: str) -> str:
   return response.json()["access_token"]
 
 
-def list_files(token: str, folder: str) -> list[dict]:
+def list_files(token: str, folder: str, updated_since: str | None = None) -> list[dict]:
   """
   Lists the files metadata for one dataset folder, newest first. 
 
   Args:
     token: The OAuth access token from get_token().
     folder: The dataset folder, e.g. "ActualTotalLoad_6.1.A_r3".
-    page_size: Max items to return per request (max 100).
+    updated_since: Only return files updated since this timestamp.
 
   Returns:
     The items from the response's itemList.
 
   Raises:
-    requests.HTTPError: If Keycloak rejects the request
+    requests.HTTPError: If File Library API rejects the request
   """
 
   body = {
@@ -56,12 +57,16 @@ def list_files(token: str, folder: str) -> list[dict]:
     "pageInfo": {"pageIndex": 0, "pageSize": MAX_IDS_PER_DOWNLOAD}
   }
 
+  if updated_since:
+    body["updatedAt"] = {"from": updated_since, "to": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")}
+
   response = requests.post(
     LIST_URL, 
     json=body,
     headers={"Authorization": f"Bearer {token}"},
     timeout=TIMEOUT_SECONDS
   )
+
   response.raise_for_status()
 
   return response.json()["itemList"]
@@ -76,7 +81,8 @@ if __name__ == "__main__":
   print(f"Token: {token[:10]}")
 
   # Listing files in a dataset folder
-  files = list_files(token, "ActualTotalLoad_6.1.A_r3")
+  files = list_files(token, "ActualTotalLoad_6.1.A_r3", "2026-11-05T00:00:00.000Z")
+  
   print(f"Found {len(files)} files in ActualTotalLoad_6.1.A_r3")
   for f in files[:1]:
     print(f"""Path: {f["typeSpecificAttributeMap"]["path"]},
