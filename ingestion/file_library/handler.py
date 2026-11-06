@@ -1,5 +1,6 @@
 import requests, dotenv, os
 from datetime import datetime, timezone
+import boto3
 
 TOKEN_URL = "https://keycloak.tp.entsoe.eu/realms/tp/protocol/openid-connect/token"
 CLIENT_ID = "tp-fms-public"
@@ -9,6 +10,7 @@ TOP_LEVEL_FOLDER = "TP_export"
 MAX_IDS_PER_DOWNLOAD = 100  # File Library API limit (https://transparencyplatform.zendesk.com/hc/en-us/articles/35960137882129-File-Library-Guide)
 DOWNLOAD_URL = "https://fms.tp.entsoe.eu/downloadFileContent"
 
+s3 = boto3.client("s3")
 
 
 def get_token(username: str, password: str) -> str:
@@ -111,10 +113,51 @@ def download_file(token: str, file_id: str) -> bytes:
 
 
 
+def build_key_for_s3(folder: str, item: dict) -> str:
+  """
+  Builds the S3 key for one version of a File Library file.
+
+  A file version is identified by its filename and its lastUpdatedTimestamp,
+  so a retry builds the same key and IfNoneMatch blocks the duplicate.
+
+  Args:
+    folder: The dataset folder, e.g. "ActualTotalLoad_6.1.A_r3".
+    item: One item from list_files().
+
+  Returns:
+    The S3 key, e.g. raw/file_library/<folder>/<filename>/updated_at=<ts>/<filename>.
+  """
+
+  filename = item["content"]["filename"]
+  updated = datetime.fromisoformat(item["lastUpdatedTimestamp"])
+  updated_at = updated.strftime("%Y%m%dT%H%M%SZ")   # basic ISO 8601 (no dashes or colons): colons in S3 keys break windows paths and spark path parsing
+
+  return f"raw/file_library/{folder}/{filename}/updated_at={updated_at}/{filename}"
+
+
+def write_raw_to_s3(bucket: str, key: str, content: bytes) -> None:
+  """
+  Writes a file to S3.
+
+  Args:
+    bucket: The S3 bucket name.
+    key: The S3 key.
+    content: The file content as bytes.
+  Raises:
+    botocore.exceptions.ClientError: If S3 rejects the request
+  """
+  
+  s3.put_object(Bucket=bucket, Key=key, Body=content, IfNoneMatch="*") 
+
+
+
+
+
 
 if __name__ == "__main__":
-  dotenv.load_dotenv() 
-  
+
+  dotenv.load_dotenv(override =True) 
+
   # OAuth token 
   token = get_token(os.environ["ENTSOE_USERNAME"], os.environ["ENTSOE_PASSWORD"])
   print(f"Token: {token[:10]}")
@@ -133,6 +176,10 @@ if __name__ == "__main__":
   content = download_file(token, newest["fileId"])
   filename = newest["content"]["filename"]
   
-  with open(filename, "wb") as out:
-    out.write(content)
-  print(f"Downloaded {filename} ({len(content)} bytes)")
+  # with open(filename, "wb") as out:
+  #   out.write(content)
+  # print(f"Downloaded {filename} ({len(content)} bytes)")
+
+  print(build_key_for_s3("ActualTotalLoad_6.1.A_r3", files[0]))
+
+  write_raw_to_s3(os.environ["RAW_BUCKET"], build_key_for_s3("ActualTotalLoad_6.1.A_r3", files[0]), content)
