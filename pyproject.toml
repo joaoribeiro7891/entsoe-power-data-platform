@@ -12,6 +12,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "botocore[crt]>=1.43.124",
     "pytest>=9.2.0",
     "ruff>=0.17.3",
 ]
