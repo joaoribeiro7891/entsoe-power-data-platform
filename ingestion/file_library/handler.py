@@ -67,16 +67,24 @@ def list_files(token: str, folder: str, updated_since: str | None = None) -> lis
   if updated_since:
     body["updatedAt"] = {"from": updated_since, "to": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")}
 
-  response = requests.post(
-    LIST_URL, 
-    json=body,
-    headers={"Authorization": f"Bearer {token}"},
-    timeout=TIMEOUT_SECONDS
-  )
-  response.raise_for_status()
+  items = []
 
-  return response.json()["itemList"]
+  while True:
+    response = requests.post(
+      LIST_URL,
+      json=body,
+      headers={"Authorization": f"Bearer {token}"},
+      timeout=TIMEOUT_SECONDS
+    )
+    response.raise_for_status()
 
+    page = response.json()["itemList"]
+    items.extend(page)
+
+    if len(page) < MAX_IDS_PER_DOWNLOAD:
+      return items
+
+    body["pageInfo"]["pageIndex"] += 1
 
 
 def download_file(token: str, file_id: str) -> bytes:
