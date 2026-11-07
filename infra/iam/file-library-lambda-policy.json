@@ -1,0 +1,26 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadWriteRawFiles",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::entsoe-power-raw-joaoribeiro/*"
+    },
+    {
+      "Sid": "ListBucketSoMissingKeysReturn404",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::entsoe-power-raw-joaoribeiro"
+    },
+    {
+      "Sid": "ReadEntsoeCredentials",
+      "Effect": "Allow",
+      "Action": "ssm:GetParameter",
+      "Resource": "arn:aws:ssm:eu-west-1:*:parameter/entsoe/*"
+    }
+  ]
+}
