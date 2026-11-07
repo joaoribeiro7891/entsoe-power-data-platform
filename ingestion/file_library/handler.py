@@ -1,6 +1,7 @@
 import requests, dotenv, os
 from datetime import datetime, timezone
 import boto3
+from botocore.exceptions import ClientError
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -156,7 +157,7 @@ def build_key_for_s3(folder: str, item: dict) -> str:
   return f"raw/file_library/{folder}/{filename}/updated_at={updated_at}/{filename}"
 
 
-def write_raw_to_s3(bucket: str, key: str, content: bytes) -> None:
+def write_raw_to_s3(bucket: str, key: str, content: bytes) -> bool:
   """
   Writes a file to S3.
 
@@ -164,15 +165,44 @@ def write_raw_to_s3(bucket: str, key: str, content: bytes) -> None:
     bucket: The S3 bucket name.
     key: The S3 key.
     content: The file content as bytes.
+  Returns:
+    True if the file was written, False if it already exists (duplicate).
   Raises:
     botocore.exceptions.ClientError: If S3 rejects the request
   """
-  
-  s3.put_object(Bucket=bucket, Key=key, Body=content, IfNoneMatch="*") 
+
+  try:
+    s3.put_object(Bucket=bucket, Key=key, Body=content, IfNoneMatch="*") 
+  except ClientError as e:
+    if e.response["Error"]["Code"] == "PreconditionFailed":
+      return False
+    raise
+
+  return True
 
 
 
+def exists_in_s3(bucket: str, key: str) -> bool:
+  """
+  Checks if a file exists in S3.
 
+  Args:
+    bucket: The S3 bucket name.
+    key: The S3 key.
+
+  Returns:
+    True if the file exists, False otherwise.
+  Raises:
+    botocore.exceptions.ClientError: If S3 rejects the request
+  """
+
+  try:
+    s3.head_object(Bucket=bucket, Key=key)
+    return True
+  except ClientError as e:
+    if e.response["Error"]["Code"] == "404":   # head_object has no response body, so S3 returns the bare HTTP status as the code
+      return False
+    raise
 
 
 if __name__ == "__main__":
