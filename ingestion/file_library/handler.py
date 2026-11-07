@@ -1,4 +1,4 @@
-import requests, os, logging, re
+import requests, os, logging, re, gzip
 from datetime import datetime, timezone
 import boto3
 from botocore.exceptions import ClientError
@@ -160,7 +160,8 @@ def build_key_for_s3(folder: str, item: dict) -> str:
     item: One item from list_files().
 
   Returns:
-    The S3 key, e.g. raw/file_library/<folder>/month=<yyyy_mm>/updated_at=<ts>/<filename>.
+    The S3 key, e.g. raw/file_library/<folder>/month=<yyyy_mm>/updated_at=<ts>/<filename>.gz.
+    Files are stored gzip-compressed, so the original filename gets a .gz extension.
     month and updated_at are Hive-style partitions, so Glue/Athena/Spark read them as columns.
     month is the period the data covers, or "all" for single-file datasets (e.g. installed capacity).
   """
@@ -172,7 +173,7 @@ def build_key_for_s3(folder: str, item: dict) -> str:
   match = re.match(r"(\d{4}_\d{2})_", filename)   # monthly file names start with the data month, e.g. "2026_11_ActualTotalLoad_6.1.A_r3.csv"
   month = match.group(1) if match else "all"      # single-file datasets cover all periods
 
-  return f"raw/file_library/{folder}/month={month}/updated_at={updated_at}/{filename}"
+  return f"raw/file_library/{folder}/month={month}/updated_at={updated_at}/{filename}.gz"
 
 
 def write_raw_to_s3(bucket: str, key: str, content: bytes) -> bool:
@@ -288,7 +289,7 @@ def process_folder(token: str, bucket: str, folder: str, updated_from: str, upda
     key = build_key_for_s3(folder, item)
     if exists_in_s3(bucket, key):
       continue  # skip if already exists (duplicate)
-    content = download_file(token, item["fileId"])
+    content = gzip.compress(download_file(token, item["fileId"]), compresslevel=6)   # CSV compresses ~5-10x; Glue/Athena/Spark read .csv.gz directly. Level 6: almost the size of 9, much faster
     if write_raw_to_s3(bucket, key, content):
       written += 1
 
