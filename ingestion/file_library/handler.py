@@ -1,4 +1,4 @@
-import requests, dotenv, os
+import requests, dotenv, os, re
 from datetime import datetime, timezone
 import boto3
 from botocore.exceptions import ClientError
@@ -147,14 +147,19 @@ def build_key_for_s3(folder: str, item: dict) -> str:
     item: One item from list_files().
 
   Returns:
-    The S3 key, e.g. raw/file_library/<folder>/<filename>/updated_at=<ts>/<filename>.
+    The S3 key, e.g. raw/file_library/<folder>/month=<yyyy_mm>/updated_at=<ts>/<filename>.
+    month and updated_at are Hive-style partitions, so Glue/Athena/Spark read them as columns.
+    month is the period the data covers, or "all" for single-file datasets (e.g. installed capacity).
   """
 
   filename = item["content"]["filename"]
   updated = datetime.fromisoformat(item["lastUpdatedTimestamp"])
   updated_at = updated.strftime("%Y%m%dT%H%M%SZ")   # basic ISO 8601 (no dashes or colons): colons in S3 keys break windows paths and spark path parsing
 
-  return f"raw/file_library/{folder}/{filename}/updated_at={updated_at}/{filename}"
+  match = re.match(r"(\d{4}_\d{2})_", filename)   # monthly file names start with the data month, e.g. "2026_11_ActualTotalLoad_6.1.A_r3.csv"
+  month = match.group(1) if match else "all"      # single-file datasets cover all periods
+
+  return f"raw/file_library/{folder}/month={month}/updated_at={updated_at}/{filename}"
 
 
 def write_raw_to_s3(bucket: str, key: str, content: bytes) -> bool:
