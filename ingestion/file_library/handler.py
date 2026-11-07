@@ -1,4 +1,4 @@
-import requests, os, logging, re, gzip
+import requests, os, logging, re, time
 from datetime import datetime, timezone
 import boto3
 from botocore.exceptions import ClientError
@@ -26,6 +26,9 @@ MAX_IDS_PER_DOWNLOAD = 100  # File Library API limit (https://transparencyplatfo
 DOWNLOAD_URL = "https://fms.tp.entsoe.eu/downloadFileContent"
 
 s3 = boto3.client("s3")
+ssm = boto3.client("ssm")
+SSM_USERNAME = "/entsoe/username"
+SSM_PASSWORD = "/entsoe/password"   # SecureString: stored encrypted
 WATERMARK_KEY = "state/file_library/watermark.txt"
 INITIAL_WATERMARK = "2026-10-31T00:00:00.000Z"  # first run only: a week before the start (2026-11-07) so it also picks up the installed capacity file, last updated 2026-11-01
 EARLIEST_UPDATE = "2015-01-01T00:00:00.000Z" # earliest possible update timestamp in the File Library (used to check if a folder exists)
@@ -160,8 +163,7 @@ def build_key_for_s3(folder: str, item: dict) -> str:
     item: One item from list_files().
 
   Returns:
-    The S3 key, e.g. raw/file_library/<folder>/month=<yyyy_mm>/updated_at=<ts>/<filename>.gz.
-    Files are stored gzip-compressed, so the original filename gets a .gz extension.
+    The S3 key, e.g. raw/file_library/<folder>/month=<yyyy_mm>/updated_at=<ts>/<filename>.
     month and updated_at are Hive-style partitions, so Glue/Athena/Spark read them as columns.
     month is the period the data covers, or "all" for single-file datasets (e.g. installed capacity).
   """
@@ -173,7 +175,7 @@ def build_key_for_s3(folder: str, item: dict) -> str:
   match = re.match(r"(\d{4}_\d{2})_", filename)   # monthly file names start with the data month, e.g. "2026_11_ActualTotalLoad_6.1.A_r3.csv"
   month = match.group(1) if match else "all"      # single-file datasets cover all periods
 
-  return f"raw/file_library/{folder}/month={month}/updated_at={updated_at}/{filename}.gz"
+  return f"raw/file_library/{folder}/month={month}/updated_at={updated_at}/{filename}"
 
 
 def write_raw_to_s3(bucket: str, key: str, content: bytes) -> bool:
@@ -289,11 +291,27 @@ def process_folder(token: str, bucket: str, folder: str, updated_from: str, upda
     key = build_key_for_s3(folder, item)
     if exists_in_s3(bucket, key):
       continue  # skip if already exists (duplicate)
-    content = gzip.compress(download_file(token, item["fileId"]), compresslevel=6)   # CSV compresses ~5-10x; Glue/Athena/Spark read .csv.gz directly. Level 6: almost the size of 9, much faster
+    content = download_file(token, item["fileId"])
     if write_raw_to_s3(bucket, key, content):
       written += 1
 
   return written
+
+
+def get_entsoe_credentials() -> tuple[str, str]:
+  """
+  Reads the ENTSO-E credentials from SSM Parameter Store.
+
+  Returns:
+    The username and password.
+  Raises:
+    botocore.exceptions.ClientError: If a parameter is missing or access is denied.
+  """
+
+  username = ssm.get_parameter(Name=SSM_USERNAME)["Parameter"]["Value"]
+  password = ssm.get_parameter(Name=SSM_PASSWORD, WithDecryption=True)["Parameter"]["Value"]
+
+  return username, password
 
 
 
@@ -310,16 +328,19 @@ def lambda_handler(event: dict, context: object) -> dict:
   window_end = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")  # this run's start time, taken before listing so nothing updated mid-run is missed
   window_start = read_watermark_from_s3(bucket)                                # where the last successful window ended
 
+  username, password = get_entsoe_credentials()
+
   written = {}
   failed = []
 
   for folder in DATASET_FOLDERS:
+    start = time.perf_counter()
     try: 
-      token = get_token(os.environ["ENTSOE_USERNAME"], os.environ["ENTSOE_PASSWORD"])   # getting a new token for each folder to avoid token expiration mid-run
+      token = get_token(username, password)   # getting a new token for each folder to avoid token expiration mid-run
       written[folder] = process_folder(token, bucket, folder, window_start, window_end)
-      print(f"Folder {folder} processed successfully. {written[folder]} files written.")
+      print(f"Folder {folder} processed successfully. {written[folder]} files written in {time.perf_counter() - start:.0f} s.")
     except Exception as e:
-      logging.exception(f"Folder {folder} failed to process: {e}")
+      logging.exception(f"Folder {folder} failed to process after {time.perf_counter() - start:.0f} s: {e}")
       failed.append(folder)
 
   if failed:
