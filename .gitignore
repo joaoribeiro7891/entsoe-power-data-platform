@@ -223,3 +223,6 @@ __marimo__/
 
 # csv files
 *.csv
+
+# lambda output
+response.json
