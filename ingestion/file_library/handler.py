@@ -1,4 +1,4 @@
-import requests, dotenv, os, re
+import requests, os, logging, re
 from datetime import datetime, timezone
 import boto3
 from botocore.exceptions import ClientError
@@ -11,10 +11,23 @@ CLIENT_ID = "tp-fms-public"
 TIMEOUT_SECONDS = 30
 LIST_URL = "https://fms.tp.entsoe.eu/listFileMetadata"
 TOP_LEVEL_FOLDER = "TP_export"
+
+DATASET_FOLDERS = [
+    "ActualTotalLoad_6.1.A_r3",                                         # Actual Total Load
+    "AggregatedGenerationPerType_16.1.B_C_r3",                          # Generation Per Type
+    "ActualGenerationOutputPerGenerationUnit_16.1.A_r3",                # Generation Per Unit
+    "EnergyPrices_12.1.D_r3.1",                                         # Day-Ahead Energy Prices
+    "PhysicalFlows_12.1.G_r3",                                          # Physical Flows
+    "GenerationForecastsForWindAndSolar_14.1.D_r3",                     # Generation Forecasts for Wind and Solar
+    "InstalledGenerationCapacityAggregated_14.1.A_r3",                  # Installed Generation Capacity
+    "UnavailabilityOfProductionAndGenerationUnits_15.1.A_B_C_D_r3.1"    # Unavailability of Production and Generation Units
+]
 MAX_IDS_PER_DOWNLOAD = 100  # File Library API limit (https://transparencyplatform.zendesk.com/hc/en-us/articles/35960137882129-File-Library-Guide)
 DOWNLOAD_URL = "https://fms.tp.entsoe.eu/downloadFileContent"
 
 s3 = boto3.client("s3")
+WATERMARK_KEY = "state/file_library/watermark.txt"
+INITIAL_WATERMARK = "2026-10-31T00:00:00.000Z"  # first run only: a week before the start (2026-11-07) so it also picks up the installed capacity file, last updated 2026-11-01
 
 # Retry strategy for temporary failures with exponential backoff
 http = requests.Session()
@@ -55,14 +68,15 @@ def get_token(username: str, password: str) -> str:
 
 
 
-def list_files(token: str, folder: str, updated_since: str | None = None) -> list[dict]:
+def list_files(token: str, folder: str, updated_from: str, updated_to: str) -> list[dict]:
   """
-  Lists the files metadata for one dataset folder, newest first. 
+  Lists the files metadata for one dataset folder, newest first.
 
   Args:
     token: The OAuth access token from get_token().
     folder: The dataset folder, e.g. "ActualTotalLoad_6.1.A_r3".
-    updated_since: For incremental loading: Only return files updated since the last successful run (watermark).
+    updated_from: Start of the window (the watermark).
+    updated_to: End of the window (this run's start time).
 
   Returns:
     The items from the response's itemList.
@@ -75,11 +89,9 @@ def list_files(token: str, folder: str, updated_since: str | None = None) -> lis
     "topLevelFolder": TOP_LEVEL_FOLDER,
     "typeSpecificAttributeMap": {"path": f"/{TOP_LEVEL_FOLDER}/{folder}/"},
     "sorterList": [{"key": "lastUpdatedTimestamp", "ascending": False}],
-    "pageInfo": {"pageIndex": 0, "pageSize": MAX_IDS_PER_DOWNLOAD}
+    "pageInfo": {"pageIndex": 0, "pageSize": MAX_IDS_PER_DOWNLOAD},
+    "updatedAt": {"from": updated_from, "to": updated_to}
   }
-
-  if updated_since:
-    body["updatedAt"] = {"from": updated_since, "to": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")}
 
   items = []
 
@@ -187,6 +199,41 @@ def write_raw_to_s3(bucket: str, key: str, content: bytes) -> bool:
 
 
 
+def read_watermark_from_s3(bucket: str) -> str:
+  """
+  Reads the watermark from S3 (end of last successful run or INITIAL_WATERMARK for the initial run).
+
+  Args:
+    bucket: The S3 bucket name.
+  Returns:
+    The watermark as a string, e.g. "2026-11-07T00:00:00.000Z".
+  Raises:
+    botocore.exceptions.ClientError: If S3 rejects the request
+  """
+
+  try:
+    response = s3.get_object(Bucket=bucket, Key=WATERMARK_KEY)
+    return response["Body"].read().decode("utf-8")
+  except ClientError as e:
+    if e.response["Error"]["Code"] == "NoSuchKey":
+      return INITIAL_WATERMARK
+    raise
+
+
+def save_watermark(bucket: str, watermark: str) -> None:
+  """
+  Saves the watermark to S3 (end of last successful run, so it will only be called after a successful run).
+
+  Args:
+    bucket: The S3 bucket name.
+    watermark: The watermark as a string, e.g. "2026-11-07T00:00:00.000Z".
+  Raises:
+    botocore.exceptions.ClientError: If S3 rejects the request
+  """
+
+  s3.put_object(Bucket=bucket, Key=WATERMARK_KEY, Body=watermark.encode("utf-8"))
+
+
 def exists_in_s3(bucket: str, key: str) -> bool:
   """
   Checks if a file exists in S3.
@@ -210,32 +257,74 @@ def exists_in_s3(bucket: str, key: str) -> bool:
     raise
 
 
+def process_folder(token: str, bucket: str, folder: str, updated_from: str, updated_to: str) -> int:
+  """
+  Processes one dataset folder from the ENTSO-E File Library.
+
+  Args:
+    token: The OAuth access token from get_token().
+    bucket: The S3 bucket name.
+    folder: The dataset folder, e.g. "ActualTotalLoad_6.1.A_r3".
+    updated_from: Start of the window (see list_files).
+    updated_to: End of the window (see list_files).
+  Returns:
+    The number of files written to S3.
+  """
+
+  files = list_files(token, folder, updated_from, updated_to)
+
+  written = 0
+
+  for item in files:
+    key = build_key_for_s3(folder, item)
+    if exists_in_s3(bucket, key):
+      continue  # skip if already exists (duplicate)
+    content = download_file(token, item["fileId"])
+    if write_raw_to_s3(bucket, key, content):
+      written += 1
+
+  return written
+
+
+
+def lambda_handler(event: dict, context: object) -> dict:
+  """
+  Copies files from the file library to S3 for every folder. 
+  Note: a failed folder doesn't stop the others, but the run still fails at the end and the watermark is not updated.
+
+  Raises:
+    RuntimeError: If any folder fails to process.
+  """
+
+  bucket = os.environ["RAW_BUCKET"]
+  window_end = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")  # this run's start time, taken before listing so nothing updated mid-run is missed
+  window_start = read_watermark_from_s3(bucket)                                # where the last successful window ended
+
+  written = {}
+  failed = []
+
+  for folder in DATASET_FOLDERS:
+    try: 
+      token = get_token(os.environ["ENTSOE_USERNAME"], os.environ["ENTSOE_PASSWORD"])   # getting a new token for each folder to avoid token expiration mid-run
+      written[folder] = process_folder(token, bucket, folder, window_start, window_end)
+      print(f"Folder {folder} processed successfully. {written[folder]} files written.")
+    except Exception as e:
+      logging.exception(f"Folder {folder} failed to process: {e}")
+      failed.append(folder)
+
+  if failed:
+    raise RuntimeError(f"Folders that failed processing: {failed}. Watermark not updated.")
+
+  save_watermark(bucket, window_end)   # this window's end is the next window's start
+
+  return {
+    "Written Files": written,
+    "Watermark": window_end}
+
+
+
 if __name__ == "__main__":
+  import dotenv
 
-  dotenv.load_dotenv(override =True) 
-
-  # OAuth token 
-  token = get_token(os.environ["ENTSOE_USERNAME"], os.environ["ENTSOE_PASSWORD"])
-  print(f"Token: {token[:10]}")
-
-  # Listing files in a dataset folder
-  files = list_files(token, "ActualTotalLoad_6.1.A_r3", "2026-11-05T00:00:00.000Z")
-  
-  print(f"Found {len(files)} files in ActualTotalLoad_6.1.A_r3")
-  for f in files[:1]:
-    print(f"""Path: {f["typeSpecificAttributeMap"]["path"]},
-      File: {f["content"]["filename"]}, 
-      Last Updated: {f["lastUpdatedTimestamp"]}""")
-    
-  # Downloading the newest file
-  newest = files[0]
-  content = download_file(token, newest["fileId"])
-  filename = newest["content"]["filename"]
-  
-  # with open(filename, "wb") as out:
-  #   out.write(content)
-  # print(f"Downloaded {filename} ({len(content)} bytes)")
-
-  print(build_key_for_s3("ActualTotalLoad_6.1.A_r3", files[0]))
-
-  write_raw_to_s3(os.environ["RAW_BUCKET"], build_key_for_s3("ActualTotalLoad_6.1.A_r3", files[0]), content)
+  dotenv.load_dotenv(override=True)  # in case credentials changed since last run
+  print(lambda_handler({}, None))  # for local testing
