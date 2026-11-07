@@ -1,6 +1,9 @@
 import requests, dotenv, os
 from datetime import datetime, timezone
 import boto3
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
 
 TOKEN_URL = "https://keycloak.tp.entsoe.eu/realms/tp/protocol/openid-connect/token"
 CLIENT_ID = "tp-fms-public"
@@ -11,6 +14,16 @@ MAX_IDS_PER_DOWNLOAD = 100  # File Library API limit (https://transparencyplatfo
 DOWNLOAD_URL = "https://fms.tp.entsoe.eu/downloadFileContent"
 
 s3 = boto3.client("s3")
+
+# Retry strategy for temporary failures with exponential backoff
+http = requests.Session()
+http.mount("https://", HTTPAdapter(max_retries=Retry(
+  total=3,
+  backoff_factor=2,
+  status_forcelist=[429, 500, 502, 503, 504],
+  allowed_methods=["POST"],
+  raise_on_status=False
+))) 
 
 
 def get_token(username: str, password: str) -> str:
@@ -28,7 +41,7 @@ def get_token(username: str, password: str) -> str:
     requests.HTTPError: If Keycloak rejects the request
   """
 
-  response = requests.post(TOKEN_URL, data={
+  response = http.post(TOKEN_URL, data={
       "client_id": CLIENT_ID,
       "grant_type": "password",
       "username": username,
@@ -70,7 +83,7 @@ def list_files(token: str, folder: str, updated_since: str | None = None) -> lis
   items = []
 
   while True:
-    response = requests.post(
+    response = http.post(
       LIST_URL,
       json=body,
       headers={"Authorization": f"Bearer {token}"},
@@ -109,7 +122,7 @@ def download_file(token: str, file_id: str) -> bytes:
   }
 
 
-  response = requests.post(
+  response = http.post(
     DOWNLOAD_URL,
     json=body,
     headers={"Authorization": f"Bearer {token}"},
