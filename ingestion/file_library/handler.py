@@ -28,6 +28,7 @@ DOWNLOAD_URL = "https://fms.tp.entsoe.eu/downloadFileContent"
 s3 = boto3.client("s3")
 WATERMARK_KEY = "state/file_library/watermark.txt"
 INITIAL_WATERMARK = "2026-10-31T00:00:00.000Z"  # first run only: a week before the start (2026-11-07) so it also picks up the installed capacity file, last updated 2026-11-01
+EARLIEST_UPDATE = "2015-01-01T00:00:00.000Z" # earliest possible update timestamp in the File Library (used to check if a folder exists)
 
 # Retry strategy for temporary failures with exponential backoff
 http = requests.Session()
@@ -269,9 +270,17 @@ def process_folder(token: str, bucket: str, folder: str, updated_from: str, upda
     updated_to: End of the window (see list_files).
   Returns:
     The number of files written to S3.
+  Raises:
+    ValueError: If the folder does not exist in the File Library (api returns no errors for that).
+
+    Check by listing all files since the earliest possible update timestamp (EARLIEST_UPDATE) and if that returns no files, the folder does not exist.
   """
 
   files = list_files(token, folder, updated_from, updated_to)
+  
+
+  if not files and not list_files(token, folder, EARLIEST_UPDATE, updated_to):  # check if the folder exists by listing all files since the earliest possible update
+    raise ValueError(f"Folder {folder} does not exist in the File Library.")
 
   written = 0
 
