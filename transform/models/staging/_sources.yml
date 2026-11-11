@@ -3,6 +3,11 @@ sources:
     database: ENTSOE
     schema: RAW
     description: FL csvs loaded by COPY INTO. Every revision is kept (file_name and updated_at columns). all csv columns are stored as VARCHARs.
+    config:
+      loaded_at_field: loaded_at          # when the daily Snowflake task loaded the row. TIMESTAMP_NTZ in UTC (SYSDATE()); dbt warns and assumes UTC, which is correct
+      freshness:                          # default for every table below
+        warn_after: {count: 2, period: day}
+        error_after: {count: 3, period: day}
     tables:
       - name: energy_prices
       - name: total_load
@@ -10,5 +15,7 @@ sources:
       - name: generation_per_unit
       - name: physical_flows
       - name: wind_solar_forecasts
-      - name: installed_capacity
       - name: unavailability
+      - name: installed_capacity
+        config:
+          freshness: null                 # yearly data: never "fresh" by a daily rule
