@@ -1,0 +1,32 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadRawFiles",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject"
+      ],
+      "Resource": "arn:aws:s3:::entsoe-power-raw-joaoribeiro/raw/file_library/*"
+    },
+    {
+      "Sid": "ListRawFiles",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::entsoe-power-raw-joaoribeiro",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "raw/file_library/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "FindBucketRegion",
+      "Effect": "Allow",
+      "Action": "s3:GetBucketLocation",
+      "Resource": "arn:aws:s3:::entsoe-power-raw-joaoribeiro"
+    }
+  ]
+}
