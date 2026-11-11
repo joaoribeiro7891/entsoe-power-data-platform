@@ -1,6 +1,4 @@
 -- Daily load of the File Library CSVs from S3 into ENTSOE.RAW.
--- The tables are created by the raw_*.sql files; the COPYs live only here.
--- COPY skips files it has already loaded, so running this again only loads new files.
 USE ROLE ENTSOE_SERVICE;
 
 CREATE OR REPLACE PROCEDURE ENTSOE.RAW.LOAD_FILE_LIBRARY()
