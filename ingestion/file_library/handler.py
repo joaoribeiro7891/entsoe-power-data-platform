@@ -172,10 +172,22 @@ def build_key_for_s3(folder: str, item: dict) -> str:
   updated = datetime.fromisoformat(item["lastUpdatedTimestamp"])
   updated_at = updated.strftime("%Y%m%dT%H%M%SZ")   # basic ISO 8601 (no dashes or colons): colons in S3 keys break windows paths and spark path parsing
 
-  match = re.match(r"(\d{4}_\d{2})_", filename)   # monthly file names start with the data month, e.g. "2026_11_ActualTotalLoad_6.1.A_r3.csv"
-  month = match.group(1) if match else "all"      # single-file datasets cover all periods
+  return f"raw/file_library/{folder}/month={file_month(filename)}/updated_at={updated_at}/{filename}"
 
-  return f"raw/file_library/{folder}/month={month}/updated_at={updated_at}/{filename}"
+
+def file_month(filename: str) -> str:
+  """
+  Returns the data month of a File Library file.
+
+  Args:
+    filename: e.g. "2026_11_ActualTotalLoad_6.1.A_r3.csv".
+
+  Returns:
+    The month as "yyyy_mm" (monthly file names start with it), or "all" for single-file datasets that cover all periods.
+  """
+
+  match = re.match(r"(\d{4}_\d{2})_", filename)
+  return match.group(1) if match else "all"
 
 
 def write_raw_to_s3(bucket: str, key: str, content: bytes) -> bool:
@@ -261,7 +273,7 @@ def exists_in_s3(bucket: str, key: str) -> bool:
     raise
 
 
-def process_folder(token: str, bucket: str, folder: str, updated_from: str, updated_to: str) -> int:
+def process_folder(token: str, bucket: str, folder: str, updated_from: str, updated_to: str, months: tuple[str, str] | None = None) -> int:
   """
   Processes one dataset folder from the ENTSO-E File Library.
 
@@ -271,6 +283,7 @@ def process_folder(token: str, bucket: str, folder: str, updated_from: str, upda
     folder: The dataset folder, e.g. "ActualTotalLoad_6.1.A_r3".
     updated_from: Start of the window (see list_files).
     updated_to: End of the window (see list_files).
+    months: Optional (first, last) data months to keep, e.g. ("2023_01", "2025_12"), both included. Used by the backfill.
   Returns:
     The number of files written to S3.
   Raises:
@@ -284,6 +297,10 @@ def process_folder(token: str, bucket: str, folder: str, updated_from: str, upda
 
   if not files and not list_files(token, folder, EARLIEST_UPDATE, updated_to):  # check if the folder exists by listing all files since the earliest possible update
     raise ValueError(f"Folder {folder} does not exist in the File Library.")
+
+  if months:
+    first, last = months
+    files = [item for item in files if first <= file_month(item["content"]["filename"]) <= last]   # "yyyy_mm" strings sort like dates; "all" falls outside any range
 
   written = 0
 
@@ -317,27 +334,44 @@ def get_entsoe_credentials() -> tuple[str, str]:
 
 def lambda_handler(event: dict, context: object) -> dict:
   """
-  Copies files from the file library to S3 for every folder. 
+  Copies files from the file library to S3 for every folder.
   Note: a failed folder doesn't stop the others, but the run still fails at the end and the watermark is not updated.
+
+  Backfill mode, for history the watermark never covered (files last updated before INITIAL_WATERMARK):
+    {"backfill": {"folder": "EnergyPrices_12.1.D_r3.1", "months_from": "2023_01", "months_to": "2025_12"}}
+  copies every file of that folder whose data month is in the range, whenever it was last updated,
+  skips files already in S3, and leaves the watermark alone so the daily runs are not affected.
 
   Raises:
     RuntimeError: If any folder fails to process.
+    ValueError: If the backfill folder is not one of DATASET_FOLDERS.
   """
 
   bucket = os.environ["RAW_BUCKET"]
   window_end = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")  # this run's start time, taken before listing so nothing updated mid-run is missed
-  window_start = read_watermark_from_s3(bucket)                                # where the last successful window ended
+
+  backfill = event.get("backfill")
+  if backfill:
+    if backfill["folder"] not in DATASET_FOLDERS:
+      raise ValueError(f"Unknown backfill folder {backfill['folder']}. Expected one of {DATASET_FOLDERS}.")
+    folders = [backfill["folder"]]
+    window_start = EARLIEST_UPDATE                                    # any update time: the months filter picks the files
+    months = (backfill["months_from"], backfill["months_to"])
+  else:
+    folders = DATASET_FOLDERS
+    window_start = read_watermark_from_s3(bucket)                     # where the last successful window ended
+    months = None
 
   username, password = get_entsoe_credentials()
 
   written = {}
   failed = []
 
-  for folder in DATASET_FOLDERS:
+  for folder in folders:
     start = time.perf_counter()
-    try: 
+    try:
       token = get_token(username, password)   # getting a new token for each folder to avoid token expiration mid-run
-      written[folder] = process_folder(token, bucket, folder, window_start, window_end)
+      written[folder] = process_folder(token, bucket, folder, window_start, window_end, months)
       print(f"Folder {folder} processed successfully. {written[folder]} files written in {time.perf_counter() - start:.0f} s.")
     except Exception as e:
       logging.exception(f"Folder {folder} failed to process after {time.perf_counter() - start:.0f} s: {e}")
@@ -345,6 +379,9 @@ def lambda_handler(event: dict, context: object) -> dict:
 
   if failed:
     raise RuntimeError(f"Folders that failed processing: {failed}. Watermark not updated.")
+
+  if backfill:
+    return {"Written Files": written, "Backfill months": months}   # the watermark belongs to the daily runs
 
   save_watermark(bucket, window_end)   # this window's end is the next window's start
 
