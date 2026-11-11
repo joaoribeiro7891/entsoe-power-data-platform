@@ -98,7 +98,7 @@ This alarm catches runs that fail, not runs that never happen (for example a bro
 
 ## 7. Snowflake
 
-[snowflake/setup.sql](snowflake/setup.sql) creates the warehouse, the `ENTSOE` database with its `RAW`, `STAGING` and `MARTS` schemas, a monthly credit limit, the `ENTSOE_SERVICE` role, the `ENTSOE_SVC` service user (for dbt and loads), and read-only access to the raw bucket.
+[snowflake/setup.sql](snowflake/setup.sql) creates the warehouse, the `ENTSOE` database with its `RAW`, `STAGING` and `MARTS` schemas, a monthly credit limit, the `ENTSOE_SERVICE` role, the `ENTSOE_SVC` service user (for dbt and loads), read-only access to the raw bucket, the CSV file format, and email alerts for failed loads. The `raw_*.sql` files and `load_file_library.sql` then create the tables and the daily load.
 
 ```
 Snowflake ──(storage integration ENTSOE_S3)──► IAM role entsoe-snowflake-s3 ──(read only)──► S3 raw/file_library/
@@ -152,6 +152,55 @@ Snowflake reads the bucket by assuming an IAM role. The role can only list and r
 4. Run section 6 of `setup.sql`. `LIST @ENTSOE.RAW.FILE_LIBRARY_STAGE;` should show the files. An `sts:AssumeRole` error means the trust doesn't match the integration yet; IAM can also take a few seconds to apply a change.
 
 Don't recreate the integration with `CREATE OR REPLACE`: that generates a new external ID, and step 3 has to be repeated.
+
+### Task failure alerts
+
+A failed Snowflake load emails you through the same SNS topic as the Lambda alarm. It's the same back-and-forth as the S3 access, with a role that can only publish to that topic ([iam/snowflake-sns-policy.json](iam/snowflake-sns-policy.json)) and the same trust template:
+
+```
+Task fails ──► ENTSOE_ALERTS (notification integration) ──► IAM role entsoe-snowflake-sns ──► SNS entsoe-pipeline-alerts ──► email
+```
+
+1. Create the role with a temporary trust:
+
+   ```powershell
+   (Get-Content infra/iam/snowflake-s3-trust.json -Raw) -replace '<SNOWFLAKE_IAM_USER_ARN>', "arn:aws:iam::${AccountId}:root" -replace '<SNOWFLAKE_EXTERNAL_ID>', '0000' | Set-Content "$env:TEMP\snowflake-trust.json" -Encoding ascii
+   aws iam create-role --role-name entsoe-snowflake-sns --assume-role-policy-document "file://$env:TEMP\snowflake-trust.json"
+   aws iam put-role-policy --role-name entsoe-snowflake-sns --policy-name snowflake-sns-publish --policy-document file://infra/iam/snowflake-sns-policy.json
+   ```
+
+2. Run section 9 of `setup.sql` with the topic ARN (`arn:aws:sns:eu-west-1:<account>:entsoe-pipeline-alerts`) and the role ARN in place of the placeholders. From `DESC NOTIFICATION INTEGRATION ENTSOE_ALERTS`, copy `SF_AWS_IAM_USER_ARN` and `SF_AWS_EXTERNAL_ID`.
+
+3. Update the trust as in step 3 of the S3 access, with those two values and `--role-name entsoe-snowflake-sns`.
+
+### Loading the raw tables
+
+Each `raw_*.sql` file creates one `RAW` table: the CSV columns as `VARCHAR` (staging casts them), plus `file_name`, `updated_at` (the revision, from the S3 folder) and `loaded_at`. Run each once.
+
+[snowflake/load_file_library.sql](snowflake/load_file_library.sql) creates the `LOAD_FILE_LIBRARY()` procedure, which holds the `COPY` for every dataset, and the `LOAD_FILE_LIBRARY_DAILY` task, which calls it every day at 07:00 UTC with `ERROR_INTEGRATION = ENTSOE_ALERTS`. Run it after the alerts are set up, because the task refers to the integration. Rerun it after changing the procedure.
+
+```
+06:00  EventBridge ──► Lambda ──► S3 raw/file_library/
+07:00  Snowflake task ──► LOAD_FILE_LIBRARY() ──► RAW tables (new files only)
+```
+
+07:00 leaves room for the Lambda's worst case: 3 attempts of 15 minutes plus the retry waits end by 06:48. `COPY` only loads files it hasn't loaded before, so a file that lands late is loaded the next day, and rerunning the load is safe.
+
+```sql
+CALL ENTSOE.RAW.LOAD_FILE_LIBRARY();   -- manual run
+SELECT scheduled_time, state, error_message
+FROM TABLE(ENTSOE.INFORMATION_SCHEMA.TASK_HISTORY(TASK_NAME => 'LOAD_FILE_LIBRARY_DAILY'))
+ORDER BY scheduled_time DESC;          -- recent runs
+```
+
+To test the alert, make a task that always fails, run it once, then drop it:
+
+```sql
+USE ROLE ENTSOE_SERVICE;
+CREATE OR REPLACE TASK ENTSOE.RAW.TEST_ALERT WAREHOUSE = ENTSOE_WH ERROR_INTEGRATION = ENTSOE_ALERTS AS SELECT 1/0;
+EXECUTE TASK ENTSOE.RAW.TEST_ALERT;   -- an email should arrive within a few minutes
+DROP TASK ENTSOE.RAW.TEST_ALERT;
+```
 
 ## Updating the code
 
