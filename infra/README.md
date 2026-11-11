@@ -1,6 +1,6 @@
 # infra
 
-One-time AWS setup for the File Library ingestion: a daily Lambda that copies new ENTSO-E File Library files into an immutable S3 raw bucket, with an email alert when a run fails.
+One-time setup for the File Library ingestion: a daily Lambda that copies new ENTSO-E File Library files into an immutable S3 raw bucket, with an email alert when a run fails (sections 1–6), and the Snowflake warehouse that reads them (section 7).
 
 ```
 EventBridge (daily 06:00 UTC) ──► Lambda: entsoe-file-library-ingest ──► S3: raw/file_library/...
@@ -95,6 +95,63 @@ aws cloudwatch set-alarm-state --alarm-name entsoe-file-library-ingest-errors --
 ```
 
 This alarm catches runs that fail, not runs that never happen (for example a broken schedule).
+
+## 7. Snowflake
+
+[snowflake/setup.sql](snowflake/setup.sql) creates the warehouse, the `ENTSOE` database with its `RAW`, `STAGING` and `MARTS` schemas, a monthly credit limit, the `ENTSOE_SERVICE` role, the `ENTSOE_SVC` service user (for dbt and loads), and read-only access to the raw bucket.
+
+```
+Snowflake ──(storage integration ENTSOE_S3)──► IAM role entsoe-snowflake-s3 ──(read only)──► S3 raw/file_library/
+```
+
+Run it in a Snowsight worksheet, section by section, together with the steps below. The Snowflake account is in `eu-west-3` and the bucket in `eu-west-1`, so loads pay a small cross-region transfer fee (about 0.02 USD/GB).
+
+### Service user key
+
+`ENTSOE_SVC` is a `TYPE = SERVICE` user: no password, key-pair login only. Generate the keys outside the repo (OpenSSL ships with Git for Windows):
+
+```powershell
+Set-Alias openssl "C:\Program Files\Git\mingw64\bin\openssl.exe"
+New-Item -ItemType Directory -Force "$HOME\.snowflake" | Out-Null
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$HOME\.snowflake\entsoe_svc_key.p8"
+openssl pkey -in "$HOME\.snowflake\entsoe_svc_key.p8" -pubout -out "$HOME\.snowflake\entsoe_svc_key.pub"
+(Get-Content "$HOME\.snowflake\entsoe_svc_key.pub" | Where-Object { $_ -notmatch "-----" }) -join "" | Set-Clipboard
+```
+
+Then, in the worksheet only (the key is not part of `setup.sql`, because it gets rotated):
+
+```sql
+ALTER USER ENTSOE_SVC SET RSA_PUBLIC_KEY = '<paste>';
+DESC USER ENTSOE_SVC;   -- RSA_PUBLIC_KEY_FP should start with SHA256:
+```
+
+### S3 access
+
+Snowflake reads the bucket by assuming an IAM role. The role can only list and read `raw/file_library/` ([iam/snowflake-s3-policy.json](iam/snowflake-s3-policy.json)). Its trust ([iam/snowflake-s3-trust.json](iam/snowflake-s3-trust.json)) lets in only your Snowflake integration, identified by an AWS user ARN and an external ID that Snowflake shows only after the integration exists. So the setup goes back and forth:
+
+1. Create the role with a temporary trust (your own account, a dummy external ID):
+
+   ```powershell
+   (Get-Content infra/iam/snowflake-s3-trust.json -Raw) -replace '<SNOWFLAKE_IAM_USER_ARN>', "arn:aws:iam::${AccountId}:root" -replace '<SNOWFLAKE_EXTERNAL_ID>', '0000' | Set-Content "$env:TEMP\snowflake-trust.json" -Encoding ascii
+   aws iam create-role --role-name entsoe-snowflake-s3 --assume-role-policy-document "file://$env:TEMP\snowflake-trust.json"
+   aws iam put-role-policy --role-name entsoe-snowflake-s3 --policy-name snowflake-s3-read --policy-document file://infra/iam/snowflake-s3-policy.json
+   ```
+
+2. Run section 5 of `setup.sql` with the role's ARN in place of `<ROLE_ARN>`. From `DESC INTEGRATION ENTSOE_S3`, copy `STORAGE_AWS_IAM_USER_ARN` (ends in `:user/...`, not your role) and `STORAGE_AWS_EXTERNAL_ID`.
+
+3. Replace the temporary trust with Snowflake's identity:
+
+   ```powershell
+   $SfUserArn = "<STORAGE_AWS_IAM_USER_ARN>"
+   $SfExternalId = "<STORAGE_AWS_EXTERNAL_ID>"
+   (Get-Content infra/iam/snowflake-s3-trust.json -Raw) -replace '<SNOWFLAKE_IAM_USER_ARN>', $SfUserArn -replace '<SNOWFLAKE_EXTERNAL_ID>', $SfExternalId | Set-Content "$env:TEMP\snowflake-trust.json" -Encoding ascii
+   aws iam update-assume-role-policy --role-name entsoe-snowflake-s3 --policy-document "file://$env:TEMP\snowflake-trust.json"
+   Remove-Item "$env:TEMP\snowflake-trust.json"
+   ```
+
+4. Run section 6 of `setup.sql`. `LIST @ENTSOE.RAW.FILE_LIBRARY_STAGE;` should show the files. An `sts:AssumeRole` error means the trust doesn't match the integration yet; IAM can also take a few seconds to apply a change.
+
+Don't recreate the integration with `CREATE OR REPLACE`: that generates a new external ID, and step 3 has to be repeated.
 
 ## Updating the code
 
