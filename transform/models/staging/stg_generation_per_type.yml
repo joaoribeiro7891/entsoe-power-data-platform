@@ -1,0 +1,23 @@
+models:
+  - name: stg_generation_per_type
+    data_tests:                          # tests on the whole model
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['area_code', 'datetime_utc', 'resolution_code', 'production_type']
+    columns:
+      - name: actual_generation_mw
+        data_tests:
+          - not_null:
+              config:
+                severity: warn           # some types only report consumption, so an empty value is not always an error
+      - name: datetime_utc
+        data_tests:                      # tests on one column
+          - not_null
+      - name: production_type
+        data_tests:
+          - not_null
+      - name: resolution_code
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['PT15M', 'PT30M', 'PT60M']

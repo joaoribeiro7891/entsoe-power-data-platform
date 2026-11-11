@@ -1,0 +1,18 @@
+models:
+  - name: stg_physical_flows
+    data_tests:                          # tests on the whole model
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['out_area_code', 'in_area_code', 'datetime_utc', 'resolution_code']
+    columns:
+      - name: flow_mw
+        data_tests:
+          - not_null
+      - name: datetime_utc
+        data_tests:                      # tests on one column
+          - not_null
+      - name: resolution_code
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['PT15M', 'PT30M', 'PT60M']
