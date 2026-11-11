@@ -1,0 +1,7 @@
+models:
+  - name: dim_area
+    columns:
+      - name: area_code
+        data_tests:
+          - unique
+          - not_null
