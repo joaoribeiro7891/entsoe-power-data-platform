@@ -1,0 +1,14 @@
+sources:
+  - name: raw
+    database: ENTSOE
+    schema: RAW
+    description: FL csvs loaded by COPY INTO. Every revision is kept (file_name and updated_at columns). all csv columns are stored as VARCHARs.
+    tables:
+      - name: energy_prices
+      - name: total_load
+      - name: generation_per_type
+      - name: generation_per_unit
+      - name: physical_flows
+      - name: wind_solar_forecasts
+      - name: installed_capacity
+      - name: unavailability
