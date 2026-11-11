@@ -1,0 +1,13 @@
+models:
+  - name: price_profile_by_year
+    description: Average day-ahead price by local hour of the day, per area and year (Portugal on Lisbon time, Spain on Madrid time).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['area_code', 'year', 'local_hour']
+    columns:
+      - name: local_hour
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]

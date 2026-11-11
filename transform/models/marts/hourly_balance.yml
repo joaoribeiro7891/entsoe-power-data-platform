@@ -1,0 +1,17 @@
+models:
+  - name: hourly_balance
+    description: Hourly load, generation and renewable generation (MWh) per area, with net imports and the two renewable shares.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['area_code', 'hour_utc']
+    columns:
+      - name: hour_utc
+        data_tests:
+          - not_null
+      - name: renewable_share_of_generation
+        data_tests:
+          - dbt_utils.accepted_range:      # a share of generation can't be below 0% or above 100%
+              arguments:
+                min_value: 0
+                max_value: 1
