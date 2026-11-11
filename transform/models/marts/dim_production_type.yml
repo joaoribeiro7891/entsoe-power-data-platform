@@ -1,0 +1,10 @@
+models:
+  - name: dim_production_type
+    columns:
+      - name: production_type
+        data_tests:
+          - unique
+          - not_null
+      - name: is_renewable
+        data_tests:
+          - not_null      # fails if staging has a type missing from the seed CSV
