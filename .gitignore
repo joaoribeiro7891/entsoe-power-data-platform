@@ -226,3 +226,8 @@ __marimo__/
 
 # lambda output
 response.json
+
+
+# Private keys (if i happen to copy them by mistake)
+*.p8
+*.pem
