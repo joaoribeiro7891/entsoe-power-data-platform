@@ -1,0 +1,18 @@
+models:
+  - name: pt_es_interconnection
+    description: Hourly energy flows between Portugal and Spain in each direction, with both day-ahead prices and their difference.
+    columns:
+      - name: hour_utc
+        data_tests:
+          - unique
+          - not_null
+      - name: flow_pt_to_es_mwh
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: flow_es_to_pt_mwh
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
