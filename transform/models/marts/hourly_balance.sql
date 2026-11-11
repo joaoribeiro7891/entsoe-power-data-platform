@@ -4,6 +4,7 @@
 -- MW is power at an instant; a share over time needs energy (MWh = MW × hours).
 -- A 15-minute value counts as 1/4 hour, so Spain's 15-minute load lines up with hourly generation.
 -- For a month: sum(renewable_generation_mwh) / sum(load_mwh). Never average the hourly shares.
+-- Net imports include pumping: without it they came out 4-5 TWh/year below the PT-ES flows (checked against pt_es_interconnection).
 
 with load_hourly as (
 
@@ -22,7 +23,8 @@ generation_hourly as (
         g.area_code,
         date_trunc('hour', g.datetime_utc)                                                    as hour_utc,
         sum(g.actual_generation_mw * {{ hours_per_slot('g.resolution_code') }})               as generation_mwh,
-        sum(iff(p.is_renewable, g.actual_generation_mw, 0) * {{ hours_per_slot('g.resolution_code') }}) as renewable_generation_mwh
+        sum(iff(p.is_renewable, g.actual_generation_mw, 0) * {{ hours_per_slot('g.resolution_code') }}) as renewable_generation_mwh,
+        sum(coalesce(g.actual_consumption_mw, 0) * {{ hours_per_slot('g.resolution_code') }})          as pumping_mwh   -- energy units draw (mostly pumped storage pumping); not part of load
     from {{ ref('fact_generation_type') }} g
     join {{ ref('dim_production_type') }} p on p.production_type = g.production_type
     group by all
@@ -36,7 +38,8 @@ balance as (
         coalesce(l.hour_utc, g.hour_utc)     as hour_utc,
         l.load_mwh,
         g.generation_mwh,
-        g.renewable_generation_mwh
+        g.renewable_generation_mwh,
+        g.pumping_mwh
     from load_hourly l
     full outer join generation_hourly g     -- keep an hour even if one side is missing; its shares are then NULL
         on g.area_code = l.area_code
@@ -55,7 +58,8 @@ select
     b.load_mwh,
     b.generation_mwh,
     b.renewable_generation_mwh,
-    b.load_mwh - b.generation_mwh                          as net_imports_mwh,   -- approximate: also holds grid losses and pumping; positive = imported
+    b.pumping_mwh,
+    b.load_mwh + b.pumping_mwh - b.generation_mwh          as net_imports_mwh,   -- positive = imported; still approximate (grid losses, reporting differences)
 
     b.renewable_generation_mwh / nullif(b.generation_mwh, 0) as renewable_share_of_generation,
     b.renewable_generation_mwh / nullif(b.load_mwh, 0)       as renewable_share_of_load
