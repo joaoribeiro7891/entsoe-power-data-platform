@@ -1,0 +1,19 @@
+models:
+  - name: dim_area_history
+    description: SCD Type 2 of each area's day-ahead price resolution (one row per version, valid_from inclusive, valid_to exclusive).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['area_code', 'valid_from']
+    columns:
+      - name: area_code
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_area')
+                field: area_code
+      - name: price_resolution
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['PT15M', 'PT30M', 'PT60M']
