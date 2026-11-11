@@ -1,0 +1,28 @@
+models:
+  - name: fact_generation_type
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['area_code', 'datetime_utc', 'resolution_code', 'production_type']
+    columns:
+      - name: area_code
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_area')
+                field: area_code
+      - name: datetime_utc
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_datetime')
+                field: datetime_utc
+      - name: production_type
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_production_type')
+                field: production_type
+      - name: actual_generation_mw
+        data_tests:
+          - not_null               # PT and ES have no empty values (checked in staging)

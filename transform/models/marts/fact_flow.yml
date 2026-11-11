@@ -1,0 +1,28 @@
+models:
+  - name: fact_flow
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['out_area_code', 'in_area_code', 'datetime_utc', 'resolution_code']
+    columns:
+      - name: out_area_code
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_area')
+                field: area_code
+      - name: in_area_code
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_area')
+                field: area_code
+      - name: datetime_utc
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_datetime')
+                field: datetime_utc
+      - name: flow_mw
+        data_tests:
+          - not_null
