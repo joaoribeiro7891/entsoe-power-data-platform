@@ -164,6 +164,7 @@ $$;
 CREATE OR REPLACE TASK ENTSOE.RAW.LOAD_FILE_LIBRARY_DAILY
   WAREHOUSE = ENTSOE_WH
   SCHEDULE = 'USING CRON 0 7 * * * UTC'
+  ERROR_INTEGRATION = ENTSOE_ALERTS   -- a failed run emails through SNS (setup.sql section 9)
   COMMENT = 'Daily COPY of new File Library files into RAW'
 AS
   CALL ENTSOE.RAW.LOAD_FILE_LIBRARY();
