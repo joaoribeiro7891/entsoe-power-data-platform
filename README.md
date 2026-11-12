@@ -96,7 +96,7 @@ Energy is computed as MW × slot length, so hourly and quarter-hourly data aggre
 | Item | Measured |
 |---|---|
 | Build day (setup, 7 GB backfill load, all dbt development) | 1.17 credits (X-Small) |
-| Daily run (07:00 load task) | TBD |
+| Daily run (07:00 load task) | 0.043 credits (≈1.3 credits/month) |
 | Storage, database `ENTSOE` | 1.24 GB |
 
 Warehouse X-Small with 60 s auto-suspend; resource monitor at 30 credits/month (notify at 50% and 80%, suspend at 100%).
