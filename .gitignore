@@ -231,3 +231,5 @@ response.json
 # Private keys (if i happen to copy them by mistake)
 *.p8
 *.pem
+# dbt logs when run from the repo root
+logs/
