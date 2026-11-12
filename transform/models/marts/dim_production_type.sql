@@ -1,6 +1,6 @@
 with types as (
-  select distinct production_type
-  from {{ ref('stg_generation_per_type') }} 
+  select production_type
+  from {{ ref('stg_production_types') }}
 )
 
 select 
