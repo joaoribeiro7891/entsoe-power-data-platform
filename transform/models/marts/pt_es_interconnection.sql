@@ -7,8 +7,8 @@
 with areas as (
 
     select
-        max(iff(area_map_code = 'PT', area_code, null)) as pt_code,
-        max(iff(area_map_code = 'ES', area_code, null)) as es_code
+        max(case when area_map_code = 'PT' then area_code end) as pt_code,
+        max(case when area_map_code = 'ES' then area_code end) as es_code
     from {{ ref('dim_area') }}
 
 ),
@@ -17,8 +17,8 @@ flows_hourly as (
 
     select
         date_trunc('hour', f.datetime_utc)                                                              as hour_utc,
-        sum(iff(f.out_area_code = a.pt_code, f.flow_mw, 0) * {{ hours_per_slot('f.resolution_code') }}) as flow_pt_to_es_mwh,
-        sum(iff(f.out_area_code = a.es_code, f.flow_mw, 0) * {{ hours_per_slot('f.resolution_code') }}) as flow_es_to_pt_mwh
+        sum(case when f.out_area_code = a.pt_code then f.flow_mw else 0 end * {{ hours_per_slot('f.resolution_code') }}) as flow_pt_to_es_mwh,
+        sum(case when f.out_area_code = a.es_code then f.flow_mw else 0 end * {{ hours_per_slot('f.resolution_code') }}) as flow_es_to_pt_mwh
     from {{ ref('fact_flow') }} f
     cross join areas a
     where (f.out_area_code = a.pt_code and f.in_area_code = a.es_code)
@@ -31,8 +31,8 @@ prices_hourly as (
 
     select
         date_trunc('hour', p.datetime_utc)                         as hour_utc,
-        avg(iff(p.area_code = a.pt_code, p.price_eur_mwh, null))  as price_pt_eur_mwh,   -- 15-minute prices: average of the 4 in the hour
-        avg(iff(p.area_code = a.es_code, p.price_eur_mwh, null))  as price_es_eur_mwh
+        avg(case when p.area_code = a.pt_code then p.price_eur_mwh end)  as price_pt_eur_mwh,   -- 15-minute prices: average of the 4 in the hour
+        avg(case when p.area_code = a.es_code then p.price_eur_mwh end)  as price_es_eur_mwh
     from {{ ref('fact_price') }} p
     cross join areas a
     group by all

@@ -15,15 +15,15 @@ latest_revision as (
 )
 
 select
-    try_to_timestamp_ntz(date_time_utc)               as datetime_utc,
+    {{ safe_timestamp('date_time_utc') }}               as datetime_utc,
     resolution_code,
     area_code,
     area_display_name,
     area_type_code,
     area_map_code,
     production_type,
-    try_to_number(actual_generation_output_mw, 12, 4) as actual_generation_mw,
-    try_to_number(actual_consumption_mw, 12, 4)       as actual_consumption_mw,   -- energy drawn by the units (e.g. pumped storage pumping); often empty
+    {{ safe_number('actual_generation_output_mw') }} as actual_generation_mw,
+    {{ safe_number('actual_consumption_mw') }}       as actual_consumption_mw,   -- energy drawn by the units (e.g. pumped storage pumping); often empty
     updated_at,                                                                   -- revision this row comes from
     file_name
 from latest_revision

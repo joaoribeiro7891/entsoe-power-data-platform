@@ -15,7 +15,7 @@ latest_revision as (
 )
 
 select
-    try_to_timestamp_ntz(date_time_utc)  as datetime_utc,
+    {{ safe_timestamp('date_time_utc') }}  as datetime_utc,
     resolution_code,
     out_area_code,
     out_area_display_name,
@@ -25,7 +25,7 @@ select
     in_area_display_name,
     in_area_type_code,
     in_area_map_code,
-    try_to_number(flow_mw, 12, 4)        as flow_mw,          -- never negative: the direction is out area → in area
+    {{ safe_number('flow_mw') }}        as flow_mw,          -- never negative: the direction is out area → in area
     updated_at,                                               -- revision this row comes from
     file_name
 from latest_revision

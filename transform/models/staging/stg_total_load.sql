@@ -16,13 +16,13 @@ latest_revision as (
 )
 
 select
-    try_to_timestamp_ntz(date_time_utc)     as datetime_utc,
+    {{ safe_timestamp('date_time_utc') }}     as datetime_utc,
     resolution_code,
     area_code,
     area_display_name,
     area_type_code,
     area_map_code,
-    try_to_number(total_load_mw, 12, 4) as total_load_mw,
+    {{ safe_number('total_load_mw') }} as total_load_mw,
     updated_at,                                                  -- revision this row comes from
     file_name
 from latest_revision

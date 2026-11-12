@@ -1,0 +1,9 @@
+# CI profile: DuckDB, a local file database. No credentials, so it is safe in this public repo.
+# Used with: dbt build --profiles-dir ci   (from transform/)
+entsoe:
+  target: ci
+  outputs:
+    ci:
+      type: duckdb
+      path: ci.duckdb
+      threads: 4

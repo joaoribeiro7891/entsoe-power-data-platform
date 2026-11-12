@@ -4,12 +4,13 @@
 -- Incremental: each run only processes rows whose revision (updated_at) is new since the last run,
 -- and merges them on the grain. A correction to an old slot updates that row; a new slot is inserted.
 -- Filtering on datetime_utc instead would miss corrections to slots already in the table.
+-- Strategy: merge on Snowflake; delete+insert on DuckDB (CI).
 
 {{
     config(
         materialized='incremental',
         unique_key=['area_code', 'datetime_utc', 'resolution_code'],
-        incremental_strategy='merge',
+        incremental_strategy=('merge' if target.type == 'snowflake' else 'delete+insert'),
         on_schema_change='append_new_columns'
     )
 }}

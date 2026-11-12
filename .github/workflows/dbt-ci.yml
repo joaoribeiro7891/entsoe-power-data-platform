@@ -1,0 +1,32 @@
+# Builds every dbt model and runs every test against DuckDB with generated sample data.
+# No warehouse credentials needed, so it runs on every push and pull request.
+name: dbt CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  dbt-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: transform
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies
+        run: uv sync --group transform
+
+      - name: Generate sample RAW data
+        run: uv run python ci/make_fixtures.py
+
+      - name: Install dbt packages
+        run: uv run dbt deps
+
+      - name: Build and test on DuckDB
+        run: uv run dbt build --profiles-dir ci

@@ -23,7 +23,7 @@ generation_hourly as (
         g.area_code,
         date_trunc('hour', g.datetime_utc)                                                    as hour_utc,
         sum(g.actual_generation_mw * {{ hours_per_slot('g.resolution_code') }})               as generation_mwh,
-        sum(iff(p.is_renewable, g.actual_generation_mw, 0) * {{ hours_per_slot('g.resolution_code') }}) as renewable_generation_mwh,
+        sum(case when p.is_renewable then g.actual_generation_mw else 0 end * {{ hours_per_slot('g.resolution_code') }}) as renewable_generation_mwh,
         sum(coalesce(g.actual_consumption_mw, 0) * {{ hours_per_slot('g.resolution_code') }})          as pumping_mwh   -- energy units draw (mostly pumped storage pumping); not part of load
     from {{ ref('fact_generation_type') }} g
     join {{ ref('dim_production_type') }} p on p.production_type = g.production_type

@@ -8,6 +8,16 @@ clean-targets:
   - "target"
   - "dbt_packages"
 
+# CI only (DuckDB): load the sample RAW tables before anything runs; does nothing on Snowflake
+on-run-start:
+  - "{{ load_ci_fixtures() }}"
+
+seeds:
+  entsoe:
+    production_type_attributes:
+      +column_types:
+        is_renewable: boolean   # explicit, so Snowflake and DuckDB both load it as a boolean
+
 models:
   entsoe:
     +static_analysis: strict

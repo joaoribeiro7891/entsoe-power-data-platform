@@ -17,7 +17,7 @@ marked as (
 
     select
         *,
-        iff(resolution_code = lag(resolution_code) over (partition by area_code order by datetime_utc), 0, 1) as starts_new_version
+        case when resolution_code = lag(resolution_code) over (partition by area_code order by datetime_utc) then 0 else 1 end as starts_new_version
     from slots
 
 ),

@@ -1,6 +1,6 @@
 sources:
   - name: raw
-    database: ENTSOE
+    database: "{{ target.database if target.type == 'duckdb' else 'ENTSOE' }}"   # CI: the DuckDB file; otherwise Snowflake
     schema: RAW
     description: FL csvs loaded by COPY INTO. Every revision is kept (file_name and updated_at columns). all csv columns are stored as VARCHARs.
     config:
