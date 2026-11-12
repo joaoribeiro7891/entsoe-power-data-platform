@@ -1,0 +1,22 @@
+production_type,category,is_renewable
+Biomass,Bioenergy,true
+Energy storage,Storage,false
+Fossil Brown coal/Lignite,Fossil,false
+Fossil Coal-derived gas,Fossil,false
+Fossil Gas,Fossil,false
+Fossil Hard coal,Fossil,false
+Fossil Oil,Fossil,false
+Fossil Oil shale,Fossil,false
+Fossil Peat,Fossil,false
+Geothermal,Other renewable,true
+Hydro Pumped Storage,Storage,false
+Hydro Run-of-river and pondage,Hydro,true
+Hydro Water Reservoir,Hydro,true
+Marine,Other renewable,true
+Nuclear,Nuclear,false
+Other,Other,false
+Other renewable,Other renewable,true
+Solar,Solar,true
+Waste,Other,false
+Wind Offshore,Wind,true
+Wind Onshore,Wind,true
