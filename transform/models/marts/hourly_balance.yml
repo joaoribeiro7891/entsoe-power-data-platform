@@ -1,17 +1,30 @@
 models:
   - name: hourly_balance
-    description: Hourly load, generation and renewable generation (MWh) per area, with net imports and the two renewable shares.
+    description: >
+      Business question 2: the renewable share, month by month. Hourly energy balance per area: load, generation,
+      renewable generation and pumping in MWh, with net imports and two renewable shares. For longer periods,
+      sum the MWh columns and divide; never average the hourly shares.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: ['area_code', 'hour_utc']
     columns:
       - name: hour_utc
+        description: Start of the hour, UTC.
         data_tests:
           - not_null
+      - name: local_month
+        description: Month in the area's local time.
+      - name: pumping_mwh
+        description: Energy drawn by units, mostly pumped storage pumping. Not part of load.
+      - name: net_imports_mwh
+        description: Load + pumping - generation. Positive means the area imported. Approximate (grid losses, reporting differences).
       - name: renewable_share_of_generation
+        description: Renewable generation / generation, for this hour.
         data_tests:
           - dbt_utils.accepted_range:      # a share of generation can't be below 0% or above 100%
               arguments:
                 min_value: 0
                 max_value: 1
+      - name: renewable_share_of_load
+        description: Renewable generation / load, for this hour. Above 1 when renewables exceed consumption and the surplus is exported.

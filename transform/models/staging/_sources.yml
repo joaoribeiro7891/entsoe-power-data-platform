@@ -2,7 +2,9 @@ sources:
   - name: raw
     database: "{{ target.database if target.type == 'duckdb' else 'ENTSOE' }}"   # CI: the DuckDB file; otherwise Snowflake
     schema: RAW
-    description: FL csvs loaded by COPY INTO. Every revision is kept (file_name and updated_at columns). all csv columns are stored as VARCHARs.
+    description: >
+      ENTSO-E File Library CSVs, loaded daily from S3 by COPY INTO. Every revision of every file is kept
+      (file_name, updated_at); all CSV columns are stored as text. In CI, generated sample data with the same columns.
     config:
       loaded_at_field: loaded_at          # when the daily Snowflake task loaded the row. TIMESTAMP_NTZ in UTC (SYSDATE()); dbt warns and assumes UTC, which is correct
       freshness:                          # default for every table below
@@ -10,12 +12,20 @@ sources:
         error_after: {count: 3, period: day}
     tables:
       - name: energy_prices
+        description: Day-ahead and intraday auction prices per bidding zone (ENTSO-E 12.1.D).
       - name: total_load
+        description: Actual total load per area (ENTSO-E 6.1.A).
       - name: generation_per_type
+        description: Actual generation and consumption per area and production type (ENTSO-E 16.1.B/C).
       - name: generation_per_unit
+        description: Actual generation per generation unit (ENTSO-E 16.1.A). Not modelled yet.
       - name: physical_flows
+        description: Cross-border physical flows per direction (ENTSO-E 12.1.G).
       - name: wind_solar_forecasts
+        description: Day-ahead, intraday and current wind and solar forecasts (ENTSO-E 14.1.D). Not modelled yet.
       - name: unavailability
+        description: Planned and forced unavailability of production units (ENTSO-E 15.1.A-D). Not modelled yet.
       - name: installed_capacity
+        description: Installed generation capacity per production type, yearly (ENTSO-E 14.1.A). Not modelled yet.
         config:
           freshness: null                 # yearly data: never "fresh" by a daily rule

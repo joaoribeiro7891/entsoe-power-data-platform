@@ -1,22 +1,32 @@
 models:
   - name: fact_price
+    description: >
+      Day-ahead prices for Portugal and Spain from 2023. Grain: area, time slot, resolution (latest revision).
+      Incremental: filters on updated_at and merges on the grain, so corrections update existing rows.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: ['area_code', 'datetime_utc', 'resolution_code']
     columns:
       - name: area_code
+        description: Area, see dim_area.
         data_tests:
           - relationships:               # every area in the fact exists in dim_area
               arguments:
                 to: ref('dim_area')
                 field: area_code
       - name: datetime_utc
+        description: Start of the time slot, UTC; see dim_datetime.
         data_tests:
           - relationships:               # every slot exists in dim_datetime (fails once the data passes its end date)
               arguments:
                 to: ref('dim_datetime')
                 field: datetime_utc
+      - name: resolution_code
+        description: Slot length. PT60M until delivery day 2025-09-30, PT15M from 2025-10-01.
       - name: price_eur_mwh
+        description: Day-ahead clearing price, EUR/MWh.
         data_tests:
           - not_null
+      - name: updated_at
+        description: Revision this row comes from; drives the incremental filter.

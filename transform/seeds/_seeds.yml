@@ -1,0 +1,12 @@
+seeds:
+  - name: production_type_attributes
+    description: >
+      Hand-maintained classification of ENTSO-E production types. Add a row when a new type appears
+      (the not_null test on dim_production_type.is_renewable fails until then).
+    columns:
+      - name: production_type
+        description: ENTSO-E production type, spelled exactly as in the data.
+      - name: category
+        description: Grouping for charts (Wind, Solar, Hydro, Fossil, ...).
+      - name: is_renewable
+        description: Counted as renewable in hourly_balance.

@@ -1,18 +1,24 @@
 models:
   - name: stg_physical_flows
+    description: >
+      Cross-border physical flows for every European border, latest revision only, typed.
+      One row per direction (out area to in area), time slot and resolution.
     data_tests:                          # tests on the whole model
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: ['out_area_code', 'in_area_code', 'datetime_utc', 'resolution_code']
     columns:
-      - name: flow_mw
-        data_tests:
-          - not_null
       - name: datetime_utc
+        description: Start of the time slot, UTC.
         data_tests:                      # tests on one column
           - not_null
       - name: resolution_code
+        description: Slot length (PT15M, PT30M or PT60M).
         data_tests:
           - accepted_values:
               arguments:
                 values: ['PT15M', 'PT30M', 'PT60M']
+      - name: flow_mw
+        description: Average flow from the out area to the in area over the slot, MW. Never negative.
+        data_tests:
+          - not_null

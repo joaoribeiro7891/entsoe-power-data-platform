@@ -20,7 +20,7 @@ Snowflake  RAW      one table per dataset, every revision, all columns VARCHAR
 
 The File Library keeps only the current version of each file. History exists only because the Lambda snapshots every new version; a correction published and overwritten between two daily runs is not captured.
 
-Setup and operations: [infra/README.md](infra/README.md).
+Setup and operations: [infra/README.md](infra/README.md). Model documentation and lineage: [dbt docs](https://joaoribeiro7891.github.io/entsoe-power-data-platform/).
 
 ## Data
 
@@ -91,6 +91,12 @@ Energy is computed as MW × slot length, so hourly and quarter-hourly data aggre
 - **Marts:** unique keys, relationships from every fact to its dimensions, value ranges.
 - **Singular:** prices within the SDAC harmonised limits (−600 to +5,000 EUR/MWh); every local day of `fact_price` fully covered (DST-aware); `fact_price` row counts equal staging.
 
+## CI
+
+GitHub Actions runs `dbt build` (every model and test) on each push and pull request, against DuckDB, with four days of generated Portugal and Spain data ([transform/ci/make_fixtures.py](transform/ci/make_fixtures.py)). The sample includes the cases the models must handle: a superseded revision, Spanish intraday prices, 15-minute and hourly data, pumping, price splits. No warehouse credentials are needed. Functions that differ between Snowflake and DuckDB go through macros in [transform/macros/cross_db.sql](transform/macros/cross_db.sql).
+
+On `main`, a second job publishes the dbt docs to GitHub Pages.
+
 ## Cost
 
 | Item | Measured |
@@ -107,14 +113,16 @@ Warehouse X-Small with 60 s auto-suspend; resource monitor at 30 credits/month (
 - **Small source gaps.** ES load is missing 150 quarter-hours since 2023; PT–ES 15-minute flows are missing 3.
 - **Daily snapshots.** Corrections published and replaced within the same day are not captured.
 - **Cross-region reads.** Snowflake runs in eu-west-3 and the bucket in eu-west-1 (≈0.02 USD/GB transferred).
-- **Snowflake-specific SQL.** Models use `try_to_number`, `convert_timezone` and `iff`; CI against DuckDB is not set up yet.
+- **CI runs on sample data.** It proves the code builds and the logic passes every test; data quality is checked by the daily build on Snowflake.
 
 ## Repository layout
 
 ```
+.github/workflows/        CI: dbt build on DuckDB, docs to GitHub Pages
 ingestion/file_library/   Lambda handler and deploy script
 infra/                    IAM policies, Snowflake setup and load SQL, setup guide
 transform/                dbt project (models, macros, seeds, tests)
+transform/ci/             DuckDB profile and sample data generator
 ```
 
 ## Running dbt
@@ -127,4 +135,12 @@ uv run dbt deps
 uv run dbt seed
 uv run dbt build
 uv run dbt source freshness
+```
+
+Same build on DuckDB, without credentials (what CI runs):
+
+```bash
+cd transform
+uv run python ci/make_fixtures.py
+uv run dbt build --profiles-dir ci
 ```

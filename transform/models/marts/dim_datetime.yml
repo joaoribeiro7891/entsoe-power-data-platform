@@ -1,0 +1,26 @@
+models:
+  - name: dim_datetime
+    description: >
+      One row per 15-minute UTC slot from 2023 to the end of 2026, with local date and time in Lisbon and Madrid.
+      The key is UTC because local time repeats and skips hours at DST changes (23- and 25-hour days).
+      Hourly facts join on the :00 slots. Move the end date forward before the data reaches it.
+    columns:
+      - name: datetime_utc
+        description: Start of the slot, UTC.
+        data_tests:
+          - unique
+          - not_null
+      - name: datetime_lisbon
+        description: Same instant in Lisbon local time (WET/WEST).
+      - name: date_lisbon
+        description: Local date in Lisbon.
+      - name: hour_lisbon
+        description: Local hour in Lisbon, 0 to 23.
+      - name: datetime_madrid
+        description: Same instant in Madrid local time (CET/CEST).
+      - name: date_madrid
+        description: Local date in Madrid.
+      - name: hour_madrid
+        description: Local hour in Madrid, 0 to 23.
+      - name: day_of_week_lisbon
+        description: ISO day of week in Lisbon, 1 = Monday to 7 = Sunday.

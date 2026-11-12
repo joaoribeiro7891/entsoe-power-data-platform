@@ -1,22 +1,28 @@
 models:
   - name: fact_load
+    description: >
+      Actual total load for Portugal and Spain from 2023. Grain: area, time slot, resolution (latest revision).
+      Portugal reports hourly, Spain every 15 minutes.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: ['area_code', 'datetime_utc', 'resolution_code']
     columns:
       - name: area_code
+        description: Area, see dim_area.
         data_tests:
           - relationships:
               arguments:
                 to: ref('dim_area')
                 field: area_code
       - name: datetime_utc
+        description: Start of the time slot, UTC; see dim_datetime.
         data_tests:
           - relationships:
               arguments:
                 to: ref('dim_datetime')
                 field: datetime_utc
       - name: total_load_mw
+        description: Average load over the slot, MW.
         data_tests:
           - not_null

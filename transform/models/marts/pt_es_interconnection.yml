@@ -1,18 +1,30 @@
 models:
   - name: pt_es_interconnection
-    description: Hourly energy flows between Portugal and Spain in each direction, with both day-ahead prices and their difference.
+    description: >
+      Business question 3: flows between Portugal and Spain against the price difference. One row per UTC hour with
+      the energy in each direction and both day-ahead prices. While the interconnection has room the prices are
+      equal; when it is full they split, and energy flows from the cheaper side to the dearer one.
     columns:
       - name: hour_utc
+        description: Start of the hour, UTC.
         data_tests:
           - unique
           - not_null
       - name: flow_pt_to_es_mwh
+        description: Energy from Portugal to Spain in the hour, MWh.
         data_tests:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 0
       - name: flow_es_to_pt_mwh
+        description: Energy from Spain to Portugal in the hour, MWh.
         data_tests:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 0
+      - name: net_flow_to_pt_mwh
+        description: Spain to Portugal minus Portugal to Spain. Positive means Portugal imported.
+      - name: price_diff_eur_mwh
+        description: Portuguese minus Spanish price. Positive means Portugal was dearer.
+      - name: is_price_split
+        description: True when the prices differ by at least 1 cent in the hour, i.e. the interconnection was full for at least part of it.

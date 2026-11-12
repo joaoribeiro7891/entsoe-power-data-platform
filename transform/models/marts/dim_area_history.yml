@@ -1,6 +1,9 @@
 models:
   - name: dim_area_history
-    description: SCD Type 2 of each area's day-ahead price resolution (one row per version, valid_from inclusive, valid_to exclusive).
+    description: >
+      SCD Type 2 of each area's day-ahead price resolution: one row per version, with the period it was valid.
+      Derived from fact_price (gaps and islands), so past versions have real dates and a future change adds a row
+      on the next build. "As of" lookup: valid_from <= date < valid_to, or valid_to is NULL for the current version.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -12,8 +15,17 @@ models:
               arguments:
                 to: ref('dim_area')
                 field: area_code
+      - name: version_number
+        description: 1 for the first version of the area, then 2, 3, ...
       - name: price_resolution
+        description: Day-ahead price resolution during this version.
         data_tests:
           - accepted_values:
               arguments:
                 values: ['PT15M', 'PT30M', 'PT60M']
+      - name: valid_from
+        description: First UTC slot of this version (inclusive).
+      - name: valid_to
+        description: First UTC slot of the next version (exclusive); NULL for the current version.
+      - name: is_current
+        description: True for the version in force today.

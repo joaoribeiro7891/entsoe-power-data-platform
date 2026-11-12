@@ -1,28 +1,35 @@
 models:
   - name: fact_flow
+    description: >
+      Cross-border physical flows to and from Portugal and Spain from 2023, including Spain's borders with France,
+      Morocco and Andorra. Grain: out area, in area, time slot, resolution (latest revision).
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: ['out_area_code', 'in_area_code', 'datetime_utc', 'resolution_code']
     columns:
       - name: out_area_code
+        description: Area the energy leaves, see dim_area.
         data_tests:
           - relationships:
               arguments:
                 to: ref('dim_area')
                 field: area_code
       - name: in_area_code
+        description: Area the energy enters, see dim_area.
         data_tests:
           - relationships:
               arguments:
                 to: ref('dim_area')
                 field: area_code
       - name: datetime_utc
+        description: Start of the time slot, UTC; see dim_datetime.
         data_tests:
           - relationships:
               arguments:
                 to: ref('dim_datetime')
                 field: datetime_utc
       - name: flow_mw
+        description: Average flow from out area to in area over the slot, MW. Never negative.
         data_tests:
           - not_null

@@ -1,7 +1,15 @@
 models:
   - name: dim_area
+    description: >
+      One row per area (bidding zone, control area or country), collected from all four datasets.
+      Name and map code come from the most recent revision. Role-playing in fact_flow (out area and in area).
     columns:
       - name: area_code
+        description: ENTSO-E EIC code, e.g. 10YPT-REN------W for Portugal.
         data_tests:
           - unique
           - not_null
+      - name: area_display_name
+        description: Readable name, e.g. Portugal (PT).
+      - name: area_map_code
+        description: Short code, e.g. PT or ES.

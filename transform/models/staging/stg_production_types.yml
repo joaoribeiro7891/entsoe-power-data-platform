@@ -1,0 +1,9 @@
+models:
+  - name: stg_production_types
+    description: Distinct production types in the generation data. Reads one RAW column without deduplicating revisions.
+    columns:
+      - name: production_type
+        description: ENTSO-E production type.
+        data_tests:
+          - unique
+          - not_null

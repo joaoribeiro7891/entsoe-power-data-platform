@@ -1,28 +1,37 @@
 models:
   - name: fact_generation_type
+    description: >
+      Actual generation per production type for Portugal and Spain from 2023.
+      Grain: area, time slot, resolution, production type (latest revision).
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: ['area_code', 'datetime_utc', 'resolution_code', 'production_type']
     columns:
       - name: area_code
+        description: Area, see dim_area.
         data_tests:
           - relationships:
               arguments:
                 to: ref('dim_area')
                 field: area_code
       - name: datetime_utc
+        description: Start of the time slot, UTC; see dim_datetime.
         data_tests:
           - relationships:
               arguments:
                 to: ref('dim_datetime')
                 field: datetime_utc
       - name: production_type
+        description: Production type, see dim_production_type.
         data_tests:
           - relationships:
               arguments:
                 to: ref('dim_production_type')
                 field: production_type
       - name: actual_generation_mw
+        description: Average generation over the slot, MW.
         data_tests:
           - not_null               # PT and ES have no empty values (checked in staging)
+      - name: actual_consumption_mw
+        description: Average consumption by the units over the slot, MW (mostly pumped storage pumping). Often empty.

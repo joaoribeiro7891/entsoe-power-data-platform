@@ -1,10 +1,17 @@
 models:
   - name: dim_production_type
+    description: >
+      One row per production type, with a category and a renewable flag from the production_type_attributes seed.
+      Left join, so a type missing from the seed appears with is_renewable NULL and fails its test.
     columns:
       - name: production_type
+        description: ENTSO-E production type.
         data_tests:
           - unique
           - not_null
+      - name: category
+        description: Wind, Solar, Hydro, Fossil, Nuclear, Storage, Bioenergy, Other renewable or Other.
       - name: is_renewable
+        description: Counted as renewable. Pumped storage, nuclear, waste and Other are not.
         data_tests:
           - not_null      # fails if staging has a type missing from the seed CSV

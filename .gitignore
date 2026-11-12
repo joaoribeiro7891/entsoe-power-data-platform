@@ -243,3 +243,6 @@ transform/ci/fixtures/
 
 # seeds are source code, not downloaded data
 !transform/seeds/*.csv
+
+# dbt docs site, generated in CI
+transform/docs-site/

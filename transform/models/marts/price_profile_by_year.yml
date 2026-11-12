@@ -1,13 +1,22 @@
 models:
   - name: price_profile_by_year
-    description: Average day-ahead price by local hour of the day, per area and year (Portugal on Lisbon time, Spain on Madrid time).
+    description: >
+      Business question 1: the daily price curve and how it changed since 2023. Average, minimum and maximum
+      day-ahead price by local hour of the day, per area and year. Portugal on Lisbon time, Spain on Madrid time.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: ['area_code', 'year', 'local_hour']
     columns:
+      - name: year
+        description: Calendar year in the area's local time.
       - name: local_hour
+        description: Hour of the day in the area's local time, 0 to 23.
         data_tests:
           - accepted_values:
               arguments:
                 values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+      - name: avg_price_eur_mwh
+        description: Average price at that hour over the year, EUR/MWh.
+      - name: price_count
+        description: Prices averaged; about 365 per year when hourly, about 1,460 when quarter-hourly.

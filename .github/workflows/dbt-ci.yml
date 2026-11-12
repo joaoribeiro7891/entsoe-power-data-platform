@@ -1,5 +1,6 @@
 # Builds every dbt model and runs every test against DuckDB with generated sample data.
 # No warehouse credentials needed, so it runs on every push and pull request.
+# On main, a second job publishes the dbt docs (models, columns, lineage) to GitHub Pages.
 name: dbt CI
 
 on:
@@ -30,3 +31,41 @@ jobs:
 
       - name: Build and test on DuckDB
         run: uv run dbt build --profiles-dir ci
+
+  docs:
+    needs: dbt-build                 # only publish code whose build and tests passed
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write                   # publish to GitHub Pages
+      id-token: write                # prove to Pages that the upload comes from this workflow
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    defaults:
+      run:
+        working-directory: transform
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies
+        run: uv sync --group transform
+
+      - name: Generate sample RAW data
+        run: uv run python ci/make_fixtures.py
+
+      - name: Install dbt packages
+        run: uv run dbt deps
+
+      - name: Generate the docs site
+        run: uv run dbt docs generate --profiles-dir ci --output-dir docs-site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: transform/docs-site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

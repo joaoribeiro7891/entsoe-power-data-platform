@@ -1,18 +1,30 @@
 models:
   - name: stg_energy_prices
+    description: >
+      Auction prices for every European area, latest revision only, typed. One row per area, time slot,
+      resolution, contract type and auction sequence. Includes intraday auctions; fact_price keeps day-ahead only.
     data_tests:                          # tests on the whole model
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: ['area_code', 'datetime_utc', 'resolution_code', 'contract_type', 'auction_sequence']
     columns:
-      - name: price_eur_mwh
-        data_tests:
-          - not_null
       - name: datetime_utc
+        description: Start of the time slot, UTC.
         data_tests:                      # tests on one column
           - not_null
       - name: resolution_code
+        description: Slot length (PT15M, PT30M or PT60M).
         data_tests:
           - accepted_values:
               arguments:
                 values: ['PT15M', 'PT30M', 'PT60M']
+      - name: contract_type
+        description: Day-ahead or Intraday.
+      - name: auction_sequence
+        description: Intraday auction number (1 to 3); NULL for day-ahead.
+      - name: price_eur_mwh
+        description: Clearing price, EUR/MWh. Can be negative.
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: Revision (file version) this row comes from.
